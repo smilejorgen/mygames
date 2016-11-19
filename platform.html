@@ -1,0 +1,859 @@
+<!doctype html> 
+<html lang="en"> 
+<head> 
+    <meta charset="UTF-8" />
+    <title>Phaser - Making your first game, part 4</title>
+	<script type="text/javascript" src="tutorial/js/phaser.min.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<script type="text/javascript">
+
+/*
+    Graphics credits
+    Princess and prince: http://yami.blog.com/2010/04/23/done-princess-how-do-you-like-it-nao/
+    Castle background, doors, chest: https://greenhatworld.com/download-platformer-game-tile-set-9-free/
+    Fire: http://blazehunter101.deviantart.com/art/fire-sprite-295316600
+    Coins: http://gmc.yoyogames.com/index.php?showtopic=671011
+
+*/
+
+
+var game = new Phaser.Game(800, 600, Phaser.AUTO, '', { preload: preload, create: create, update: update });
+
+function preload() {
+
+    game.load.image('sky', 'tutorial/assets/darkwall.png');
+    game.load.image('crate', 'tutorial/assets/crate2.png');
+    game.load.image('greenbox', 'tutorial/assets/BackgroundGreen.png');
+    game.load.image('ground', 'tutorial/assets/platform-s.png');
+    game.load.image('floor', 'tutorial/assets/tile9.png');
+    game.load.image('key', 'tutorial/assets/key.png');
+    game.load.image('spark', 'tutorial/assets/spark.png');
+    //game.load.image('irondoor', 'tutorial/assets/iron_door2.png');
+    game.load.spritesheet('princess', 'tutorial/assets/princess.png', 32, 38);
+    game.load.spritesheet('prince', 'tutorial/assets/prince.png', 32, 43);
+    game.load.spritesheet('fire', 'tutorial/assets/firesmall.png', 23, 32);
+    game.load.spritesheet('coin', 'tutorial/assets/coin.png', 16, 16);
+    game.load.spritesheet('irondoor', 'tutorial/assets/irondoors.png', 115, 128);
+    game.load.spritesheet('chest', 'tutorial/assets/chest.png', 51, 56);
+
+}
+
+var player;
+var platforms;
+var cursors;
+var fires;
+var sparks;
+var coins;
+var chests;
+var crates;
+var plaque;
+var ground;
+
+var stars;
+
+var score = 0;
+var scoreText;
+
+var life = 3;
+var lifeText;
+var timeText;
+var plaqueText;
+
+var burned = 0;
+var sparkTimer;
+var sparkFire = 6000;
+var endTimer;
+var levelTimer;
+var totalLevelTime;
+var timeBonus;
+var timeLimit = 30000;
+var levelBonus = 10000;
+var currentLevel = 0;
+var coinsCollected = 0;
+var chestsCollected = 0;
+var nextLife = 100000;
+var lifeIncrement = 100000;
+
+var levelActive = false;
+var playerDeath = false;
+
+function create() {
+
+    //  We're going to be using physics, so enable the Arcade Physics system
+    game.physics.startSystem(Phaser.Physics.ARCADE);
+
+    //  A simple background for our game
+    castle = game.add.tileSprite(0, 0, 800, 600, 'sky');
+
+    //  The platforms group contains the ground and the 2 ledges we can jump on
+    platforms = game.add.group();
+
+    //  We will enable physics for any object that is created in this group
+    platforms.enableBody = true;
+
+    // Here we create the ground.
+    ground = platforms.create(0, 512, 'ground');
+    var floor = game.add.tileSprite(0, 512, 1024, 128, 'floor');
+
+    //  Scale it to fit the width of the game (the original sprite is 400x32 in size)
+    ground.scale.setTo(10, 2);
+
+    //  This stops it from falling away when you jump on it
+    ground.body.immovable = true;
+
+   prince2 = game.add.sprite(148, 85, 'prince');
+    prince2.kill();
+
+    door = game.add.sprite(112, 0, 'irondoor');
+    //door.scale.setTo(0.5, 0.5);
+    game.physics.arcade.enable(door);
+    door.animations.add('open', [0, 1, 2, 3, 4], 10, false);
+    prince = game.add.sprite(148, 85, 'prince');
+    door.kill();
+
+    key = game.add.sprite(32, 374, 'key');
+    key.scale.setTo(0.5, 0.5);
+    game.physics.arcade.enable(key);
+    key.kill();
+    
+    // The player and its settings
+    player = game.add.sprite(32, game.world.height - 150, 'princess');
+ 
+
+    //  We need to enable physics on the player
+    game.physics.arcade.enable(player);
+    game.physics.arcade.enable(prince);
+
+    //  Player physics properties. Give the little guy a slight bounce.
+    player.body.bounce.y = 0.2;
+    player.body.gravity.y = 700;
+    player.body.collideWorldBounds = true;
+    player.anchor.setTo(0.5, 0.5);
+    player.kill();
+
+    prince.body.bounce.y = 0.2;
+    prince.body.gravity.y = 700;
+    prince.body.collideWorldBounds = true;
+    prince.kill();
+
+    //  Our two animations, walking left and right.
+    player.animations.add('left', [0, 1, 2, 1], 10, true);
+    player.animations.add('right', [4, 5, 6, 5], 10, true);
+    player.animations.add('slowwalk', [0, 1, 2, 1], 4, true);
+    prince.animations.add('slowwalk', [4, 5, 6, 5], 4, true);
+
+    cursors = game.input.keyboard.createCursorKeys();
+    spacebutton = game.input.keyboard.addKey(Phaser.Keyboard.SPACEBAR);
+
+    fires = game.add.group();
+    fires.enableBody = true;
+
+    sparks = game.add.group();
+    sparks.enableBody = true;
+
+    coins = game.add.group();
+    coins.enableBody = true;
+
+    chests = game.add.group();
+    chests.enableBody = true;
+
+    crates = game.add.group();
+    crates.enableBody = true;
+
+    plaque = game.add.sprite(250, 150, 'greenbox');
+
+
+    scoreText = game.add.text(16, 560, 'score: 0', { fontSize: '12px', fill: '#ccc' });
+    lifeText = game.add.text(260, 560, 'lives: 3', { fontSize: '32px', fill: '#ccc' });
+    timeText = game.add.text(16, 16, '', { fontSize: '32px', fill: '#ccc' });
+    plaqueText = game.add.text(270, 190, 'Save the prince!!!\n\n\nReady player one\nPress space to start', { font: '20px Arial', fill: '#000' });
+
+
+}
+
+function update() {
+
+        game.physics.arcade.collide(player, platforms);
+        game.physics.arcade.collide(prince, platforms);
+        game.physics.arcade.collide(fires, platforms);
+        game.physics.arcade.collide(crates, platforms);
+//        game.physics.arcade.collide(crates, player);
+        game.physics.arcade.collide(crates, crates);
+    
+
+    if (levelActive == true) {
+        game.physics.arcade.collide(player, crates, playerSmash, null, this);
+
+        game.physics.arcade.overlap(player, coins, collectCoin, null, this);
+        game.physics.arcade.overlap(player, chests, collectChest, null, this);
+        game.physics.arcade.overlap(player, key, collectKey, null, this);
+        game.physics.arcade.overlap(player, door, checkForKey, null, this);
+        game.physics.arcade.overlap(fires, crates, burnCrate, null, this);
+        game.physics.arcade.overlap(sparks, crates, burnCrate, null, this);
+        game.physics.arcade.overlap(sparks, platforms, function(spark, platform){spark.kill();}, null, this);
+        
+        if (game.physics.arcade.overlap(player, fires, null, null, this)) {
+            burned += 1;
+            if (burned == 10) {
+                playerDeath=true;
+                levelActive=false;
+            }
+        } else {
+            burned=0;
+        }
+    
+        //  Reset the players velocity (movement)
+        player.body.velocity.x = 0;
+    
+        if (cursors.left.isDown)
+        {
+            //  Move to the left
+            player.body.velocity.x = -150;
+    
+            player.animations.play('left');
+        }
+        else if (cursors.right.isDown)
+        {
+            //  Move to the right
+            player.body.velocity.x = 150;
+    
+            player.animations.play('right');
+        }
+        else
+        {
+            //  Stand still
+            player.animations.stop();    
+            player.frame = 3;
+        }
+        
+        //  Allow the player to jump if they are touching the ground.
+        if (cursors.up.isDown && player.body.touching.down)
+        {
+            player.body.velocity.y = -350;
+       }
+
+        if (game.time.now - sparkTimer > sparkFire) {
+            fireSparks();
+            sparkTimer=game.time.now;
+        }
+    
+        totalLevelTime = game.time.now - levelTimer;
+        timeBonus = timeLimit - totalLevelTime;
+        if (timeBonus < 0) {
+            timeBonus=0;
+            playerDeath=true;
+            levelActive=false;
+
+        };
+        timeText.text = 'Time: \n' + timeBonus;
+
+
+    } else {
+        ////START LEVEL
+        if (plaque.alive && spacebutton.isDown) {
+            plaque.kill();
+            plaqueText.text = "";
+            startNewLevel(currentLevel);
+        }
+
+        //// END LEVEL SEQUENCE
+
+        if (game.time.now - endTimer > 0 && game.time.now - endTimer < 1600) {
+            player.body.velocity.x = -20;
+    
+            player.animations.play('slowwalk');
+            if (totalLevelTime==0) {totalLevelTime = game.time.now - levelTimer;}
+            //door.kill();
+    
+        } else if (game.time.now - endTimer < 1700) {
+            player.body.velocity.x = 0;
+            player.animations.stop();    
+            door.animations.play('open');
+            //door.frame +=1;
+        } else if (game.time.now - endTimer < 2700) {
+        } else if (game.time.now - endTimer < 3700) {
+            if (prince2.alive) {
+                prince.reset(148, 85);
+                prince2.kill();
+            }
+            prince.body.velocity.x = 20;
+    
+            prince.animations.play('slowwalk');
+        } else if (game.time.now - endTimer < 5700) {
+            prince.body.velocity.x = 0;
+            prince.animations.stop(); 
+            prince.frame = 3;
+            player.frame = 3;
+            if (player.body.touching.down) {player.body.velocity.y = -170;}
+            if (prince.body.touching.down) {prince.body.velocity.y = -150;}
+            //calculate score
+            if (totalLevelTime > 0) {
+                plaque.reset(250, 150);
+                plaqueText.text = score +" : Old score\n+" +levelBonus + " : Level bonus\n+";
+                plaqueText.text = plaqueText.text + (coinsCollected*250 + chestsCollected*10000) + " : Treasure\n+";
+                score = score + levelBonus + (coinsCollected*250 + chestsCollected*10000);
+                if (totalLevelTime < timeLimit) {
+                    score = score + timeLimit - totalLevelTime;
+                    plaqueText.text = plaqueText.text + (timeLimit - totalLevelTime); 
+                } else {
+                    plaqueText.text = plaqueText.text + 0;                         
+                }
+                
+                plaqueText.text = plaqueText.text + " : Time bonus\n=" + score + " : Total score\n\nReady for the next level?\nPress space to start!";                         
+                totalLevelTime = 0;
+                scoreText.text = 'Score: ' + score;
+                currentLevel+=1;
+                if (score > nextLife) {
+                    life += 1;
+                    nextLife += lifeIncrement;
+                    lifeText.text = 'Lives: ' + life;
+                }
+
+            }
+            
+        }
+        
+        //// Player death
+        if (playerDeath) {
+            player.body.velocity.x = 0;
+            player.body.velocity.y = 0;
+            player.animations.stop();
+            player.angle +=10;
+            if (player.angle == 0) {
+                life -= 1;
+                lifeText.text = 'Lives: ' + life;
+                playerDeath=false;
+                plaque.reset(250, 150);
+                plaqueText.text =  "You die!!\n\nTry again!!\n\nPress space to start";
+            }
+        }
+
+    }
+ 
+
+}
+
+    function collectCoin (player, coin) {
+        coinsCollected +=1;
+        coin.kill();
+    }
+
+    function collectChest (player, chest) {
+        chestsCollected +=1;
+        chest.kill();
+    }
+
+    function collectKey (player, key) {
+        
+        key.reset(560, 560);
+        key.scale.setTo(1, 1);
+    
+    
+    }
+    
+    function burnCrate (fire, crate) {
+        var fire = fires.create(crate.x, crate.y, 'fire');
+        
+        fire.body.gravity.y = 600;
+        fire.animations.add('burn', [0, 1, 2, 3, 4], 10, true);
+        fire.animations.play('burn');
+        crate.kill();
+    }
+
+        function playerSmash(player, crate) {
+            if (crate.body.velocity.y > 0 && player.body.touching.up && player.y-24 > crate.y){
+                playerDeath=true;
+                levelActive=false;
+                
+            }
+/*        if (cursors.up.isDown && player.body.touching.down)
+        {
+            player.body.velocity.y = -350;
+       }
+*/            
+        }
+
+    function checkForKey (player, door) { 
+        if (key.x==560) { 
+            endTimer = game.time.now;
+            levelActive = false;
+            player.animations.stop();    
+        }    
+    }
+
+    function startNewLevel (level) {
+//    currentLevel +=1;
+        generateLevel(currentLevel);
+    }
+    
+    function fireSparks () {
+        fires.forEach(function(eachFire){
+            if (eachFire.alive){
+            for (var i = 0; i<2;i++){
+                spark=sparks.create(eachFire.x+10, eachFire.y+10, 'spark');
+                spark.body.velocity.x=100-200*i;
+                spark.body.velocity.y=-50;
+                
+            }}
+        })
+
+        sparks.setAll('body.gravity.y', 300);
+        sparks.setAll('body.drag.x', 150);
+    }
+
+function generateLevel (level) {
+
+    platforms.callAll('kill');
+    fires.callAll('kill');
+    coins.callAll('kill');
+    chests.callAll('kill');
+    crates.callAll('kill');
+
+    ground = platforms.create(0, 512, 'ground');
+    ground.scale.setTo(15, 2);
+
+    //  This stops it from falling away when you jump on it
+    ground.body.immovable = true;
+
+
+    if (level == 2) {
+        for (var i = 0; i < 6; i++) {
+            platforms.create(i*64-64,448,'ground');            
+        }
+        for (var i = 0; i < 8; i++) {
+            platforms.create(i*64+256+8,368,'ground');            
+        }
+        for (var i = 0; i < 9; i++) {
+            platforms.create(i*64+-16,288,'ground');            
+        }
+        for (var i = 0; i < 3; i++) {
+            platforms.create(i*64+640-8,208,'ground');            
+        }
+        for (var i = 0; i < 10; i++) {
+            platforms.create(i*64-64,128,'ground');            
+        }
+    
+            //  Create a star inside of the 'stars' group
+            fires.create(128, 256, 'fire');
+            fires.create(228, 256, 'fire');
+        
+        for (var i = 0; i < 3; i++) {
+            coins.create(368+i*32, 310, 'coin');
+        }
+        for (var i = 0; i < 3; i++) {
+            coins.create(560, 186+i*32, 'coin');
+        }
+        for (var i = 0; i < 3; i++) {
+            coins.create(680+i*32, 146, 'coin');
+        }
+
+        key.reset(32, 244);
+        key.scale.setTo(0.5, 0.5);
+        timeLimit = 30000;
+
+    } else if (level == 3) {
+        for (var i = 0; i < 3; i++) {
+            platforms.create(i*64-32,448,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64-8,368,'ground');            
+        }
+        for (var i = 0; i < 6; i++) {
+            platforms.create(i*64+432-8,368,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64-32,288,'ground');            
+        }
+        for (var i = 0; i < 4; i++) {
+            platforms.create(i*64+192,288,'ground');            
+        }
+        for (var i = 0; i < 4; i++) {
+            platforms.create(i*64+672,288,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64-56,208,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64+560+8,208,'ground');            
+        }
+        for (var i = 0; i < 10; i++) {
+            platforms.create(i*64-64,128,'ground');            
+        }
+    
+            //  Create a star inside of the 'stars' group
+            fires.create(492, 336, 'fire');
+            fires.create(268, 256, 'fire');
+
+        for (var i = 0; i < 6; i++) {
+            coins.create(190+i*32, 186, 'coin');
+        }
+        for (var i = 0; i < 6; i++) {
+            coins.create(460+i*32, 236, 'coin');
+        }
+        for (var i = 0; i < 3; i++) {
+            coins.create(32, 244+i*80, 'coin');
+            coins.create(64, 244+i*80, 'coin');
+        }
+
+        key.reset(22, 164);
+        key.scale.setTo(0.5, 0.5);
+
+    } else  if (level == 4) {
+        for (var i = 0; i < 12; i++) {
+            platforms.create(i*64-64,448,'ground');            
+        }
+        for (var i = 0; i < 1; i++) {
+            platforms.create(i*64-8,368,'ground');            
+        }
+        for (var i = 0; i < 12; i++) {
+            platforms.create(i*64+96-16,288,'ground');            
+        }
+        for (var i = 0; i < 3; i++) {
+            platforms.create(i*64+672-8,208,'ground');            
+        }
+        for (var i = 0; i < 10; i++) {
+            platforms.create(i*64-64,128,'ground');            
+        }
+    
+            //  Create a star inside of the 'stars' group
+        for (var i = 0; i < 4; i++) {
+            fires.create(i*128+128, 256, 'fire');
+        }
+        for (var i = 0; i < 4; i++) {
+            fires.create(i*128+128, 416, 'fire');
+        }
+
+        for (var i = 0; i < 12; i++) {
+            coins.create(90+i*48, 166, 'coin');
+        }
+        for (var i = 0; i < 12; i++) {
+            coins.create(90+i*48, 326, 'coin');
+        }
+
+        key.reset(750, 244);
+        key.scale.setTo(0.5, 0.5);
+
+    } else  if (level == 5) {
+        for (var i = 0; i < 4; i++) {
+            platforms.create(i*64+128,448,'ground');            
+        }
+        for (var i = 0; i < 1; i++) {
+            platforms.create(i*64+768,448,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64-32-8,368,'ground');            
+        }
+        for (var i = 0; i < 12; i++) {
+            platforms.create(i*64+128,288,'ground');            
+        }
+        for (var i = 0; i < 10; i++) {
+            platforms.create(i*64+256-8,208,'ground');            
+        }
+        for (var i = 0; i < 10; i++) {
+            platforms.create(i*64-64,128,'ground');            
+        }
+    
+            //  Create a star inside of the 'stars' group
+        for (var i = 0; i < 1; i++) {
+            fires.create(i*128+628, 176, 'fire');
+        }
+        for (var i = 0; i < 2; i++) {
+            fires.create(i*128+480, 480, 'fire');
+        }
+
+        for (var j = 0; j < 6; j++) {
+            for (var i = 0; i < 12; i++) {
+                coins.create(430+i*24, 326+j*24, 'coin');
+            }            
+        }
+
+        chests.create(720, 232, 'chest');
+
+        key.reset(750, 164);
+        key.scale.setTo(0.5, 0.5);
+
+    } else if (level == 6) {
+        for (var i = 0; i < 3; i++) {
+            platforms.create(i*64-32,384,'ground');            
+        }
+        for (var i = 0; i < 6; i++) {
+            platforms.create(i*64+432-8,432,'ground');            
+        }
+        for (var i = 0; i < 4; i++) {
+            platforms.create(i*64-32,304,'ground');            
+        }
+        for (var i = 0; i < 4; i++) {
+            platforms.create(i*64+192,304,'ground');            
+        }
+        for (var i = 0; i < 4; i++) {
+ //           platforms.create(i*64+672,304,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64-56,208,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64+528,224,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64+678-8,160,'ground');            
+        }
+        for (var i = 0; i < 10; i++) {
+            platforms.create(i*64-64,128,'ground');            
+        }
+    
+            //  Create a star inside of the 'stars' group
+            fires.create(640, 400, 'fire');
+            fires.create(608, 192, 'fire');
+
+        for (var i = 0; i < 8; i++) {
+            coins.create(200+i*32, 176, 'coin');
+            coins.create(200+i*32, 196, 'coin');
+        }
+        for (var i = 0; i < 6; i++) {
+            coins.create(460+i*32, 276, 'coin');
+            coins.create(460+i*32, 296, 'coin');
+        }
+        for (var i = 0; i < 3; i++) {
+            coins.create(20, 244+i*20, 'coin');
+            coins.create(40, 244+i*20, 'coin');
+            coins.create(60, 244+i*20, 'coin');
+        }
+
+        chests.create(32, 328, 'chest');
+
+        crates.create(180, 242, 'crate');
+        crates.create(550, 382, 'crate');
+        crates.create(300, 422, 'crate');
+        
+
+        key.reset(22, 164);
+        key.scale.setTo(0.5, 0.5);
+        timeLimit = 35000;
+
+    } else if (level == 7) {
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64-40,384,'ground');            
+        }
+        for (var i = 0; i < 6; i++) {
+            platforms.create(i*64+432-8,432,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64-8,304,'ground');            
+        }
+        for (var i = 0; i < 4; i++) {
+            platforms.create(i*64+200,304,'ground');            
+        }
+        for (var i = 0; i < 4; i++) {
+            platforms.create(i*64+680,304,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64-8,208,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64+560,224,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64+678-8,160,'ground');            
+        }
+        for (var i = 0; i < 10; i++) {
+            platforms.create(i*64-64,128,'ground');            
+        }
+    
+            //  Create a star inside of the 'stars' group
+            fires.create(530, 400, 'fire');
+            fires.create(368, 272, 'fire');
+
+        for (var i = 0; i < 8; i++) {
+            coins.create(200+i*32, 176, 'coin');
+            coins.create(200+i*32, 196, 'coin');
+        }
+        for (var i = 0; i < 6; i++) {
+            coins.create(460+i*32, 276, 'coin');
+            coins.create(460+i*32, 296, 'coin');
+        }
+        for (var i = 0; i < 3; i++) {
+            coins.create(20, 244+i*20, 'coin');
+            coins.create(40, 244+i*20, 'coin');
+            coins.create(60, 244+i*20, 'coin');
+        }
+
+        chests.create(32, 328, 'chest');
+
+        crates.create(280, 242, 'crate');
+        crates.create(700, 382, 'crate');
+        
+
+        key.reset(22, 164);
+        key.scale.setTo(0.5, 0.5);
+
+    } else if (level == 8) {
+        for (var i = 0; i < 6; i++) {
+            platforms.create(i*64-64,448,'ground');            
+        }
+        for (var i = 0; i < 8; i++) {
+            platforms.create(i*64+256+8,368,'ground');            
+        }
+        for (var i = 0; i < 3; i++) {
+            platforms.create(i*64+-64+8,368,'ground');            
+        }
+        for (var i = 0; i < 5; i++) {
+            platforms.create(i*64+128-16,288,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64+704-16,256,'ground');            
+        }
+        for (var i = 0; i < 1; i++) {
+            platforms.create(i*64+640-8,176,'ground');            
+        }
+        for (var i = 0; i < 10; i++) {
+            platforms.create(i*64-64,128,'ground');            
+        }
+    
+            //  Create a star inside of the 'stars' group
+            fires.create(310, 338, 'fire');
+
+        for (var i = 0; i < 8; i++) {
+            for (var j = 0; j < 4; j++) {
+                coins.create(168+i*32, 250-j*32, 'coin');
+            }
+        }
+        for (var i = 0; i < 3; i++) {
+            for (var j = 0; j < 8; j++) {
+                coins.create(540+j*32, 416+i*32, 'coin');
+            }
+        }
+        for (var i = 0; i < 3; i++) {
+            coins.create(680+i*32, 146, 'coin');
+        }
+
+        for (var i = 0; i < 5; i++) {
+            crates.create(350+i*44, 332, 'crate');
+        }
+
+        key.reset(32, 404);
+        key.scale.setTo(0.5, 0.5);
+        timeLimit = 35000;
+
+    } else if (level == 9) {
+        for (var i = 0; i < 4; i++) {
+            platforms.create(i*64-64,448,'ground');            
+        }
+        for (var i = 0; i < 8; i++) {
+            platforms.create(i*64+256+8,368,'ground');            
+        }
+        for (var i = 0; i < 3; i++) {
+            platforms.create(i*64+-64+8,368,'ground');            
+        }
+        for (var i = 0; i < 5; i++) {
+            platforms.create(i*64+128-16,256,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64+704-16,256,'ground');            
+        }
+        for (var i = 0; i < 1; i++) {
+            platforms.create(i*64+368-8,176,'ground');            
+        }
+        for (var i = 0; i < 1; i++) {
+            platforms.create(i*64+640-8,176,'ground');            
+        }
+        for (var i = 0; i < 2; i++) {
+            platforms.create(i*64+704-16,96,'ground');            
+        }
+        for (var i = 0; i < 6; i++) {
+            platforms.create(i*64-64,128,'ground');            
+        }
+    
+            //  Create a star inside of the 'stars' group
+            fires.create(310, 338, 'fire');
+
+        for (var i = 0; i < 3; i++) {
+            for (var j = 0; j < 8; j++) {
+                coins.create(540+j*32, 416+i*32, 'coin');
+            }
+        }
+        for (var i = 0; i < 3; i++) {
+            coins.create(680+i*32, 146, 'coin');
+        }
+        chests.create(700, 40, 'chest');
+        chests.create(700, 200, 'chest');
+
+        crates.create(24, 332, 'crate');
+        for (var i = 0; i < 5; i++) {
+            crates.create(350+i*44, 332, 'crate');
+        }
+
+        key.reset(32, 404);
+        key.scale.setTo(0.5, 0.5);
+        timeLimit = 35000;
+
+// 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 480, 512
+
+    } else {
+        
+        currentLevel = 1;
+        for (var i = 0; i < 6; i++) {
+            platforms.create(i*64-64,448,'ground');            
+        }
+        for (var i = 0; i < 3; i++) {
+            platforms.create(i*64+320+8,368,'ground');            
+        }
+        for (var i = 0; i < 3; i++) {
+            platforms.create(i*64+480,288,'ground');            
+        }
+        for (var i = 0; i < 4; i++) {
+            platforms.create(i*64+640,208,'ground');            
+        }
+        for (var i = 0; i < 10; i++) {
+            platforms.create(i*64-64,128,'ground');            
+        }
+
+
+        fires.create(128, 416, 'fire');
+        coins.create(400, 306, 'coin');
+        coins.create(560, 226, 'coin');
+        coins.create(720, 146, 'coin');
+
+
+        key.reset(32, 394);
+        key.scale.setTo(0.5, 0.5);
+    }    
+    platforms.setAll('body.immovable', true);
+    fires.callAll('animations.add', 'animations', 'burn', [0, 1, 2, 3, 4], 10, true);
+    fires.callAll('animations.play', 'animations', 'burn');
+
+    coins.callAll('animations.add', 'animations', 'spin', [0, 1, 2, 3, 4, 5, 6, 7], 10, true);
+    coins.callAll('animations.play', 'animations', 'spin');
+
+    chests.callAll('animations.add', 'animations', 'open', [0, 0, 0, 0, 0, 0, 1, 2, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 6, true);
+    chests.callAll('animations.play', 'animations', 'open');
+
+    crates.setAll('body.gravity.y', 1000);
+    crates.setAll('body.drag.x', 10000);
+    crates.setAll('body.bounce.y', 0.3);
+
+    prince2.reset(148, 85);
+    prince2.frame = 3;
+    prince.kill();
+    player.reset(32,450);
+    door.reset(112, 0);
+    door.frame = 0;
+
+    levelActive = true;
+    levelTimer = game.time.now;
+    sparkTimer = game.time.now;
+    totalLevelTime = 0;
+    coinsCollected = 0;
+    chestsCollected = 0;
+}
+
+</script>
+
+</body>
+</html>
